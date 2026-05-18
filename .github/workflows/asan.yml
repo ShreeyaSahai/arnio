@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feat/asan-workflow   # remove before final PR
+      - feat/asan-workflow   # remove later
 
 jobs:
   asan:
@@ -44,6 +44,10 @@ jobs:
       - name: Install project
         run: |
           pip install -e ".[dev]" --no-build-isolation
+
+      - name: Preload ASAN runtime
+        run: |
+          echo "LD_PRELOAD=$(clang -print-file-name=libasan.so)" >> $GITHUB_ENV
 
       - name: Run tests (ASAN enabled)
         run: |
