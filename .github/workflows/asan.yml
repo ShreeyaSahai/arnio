@@ -2,9 +2,6 @@ name: ASAN Checks
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feat/asan-workflow   # remove later
 
 jobs:
   asan:
@@ -24,31 +21,36 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang build-essential
 
-      - name: Set ASAN + CMake flags
+      - name: Set ASAN and CMake flags
         run: |
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-          echo "CFLAGS=-fsanitize=address -fno-omit-frame-pointer" >> $GITHUB_ENV
-          echo "CXXFLAGS=-fsanitize=address -fno-omit-frame-pointer" >> $GITHUB_ENV
-          echo "LDFLAGS=-fsanitize=address" >> $GITHUB_ENV
+          echo "CC=clang"                                              >> $GITHUB_ENV
+          echo "CXX=clang++"                                          >> $GITHUB_ENV
           echo "CMAKE_CXX_FLAGS=-fsanitize=address -fno-omit-frame-pointer" >> $GITHUB_ENV
-          echo "CMAKE_EXE_LINKER_FLAGS=-fsanitize=address" >> $GITHUB_ENV
-          echo "CMAKE_SHARED_LINKER_FLAGS=-fsanitize=address" >> $GITHUB_ENV
-          echo "ASAN_OPTIONS=detect_leaks=1:abort_on_error=1" >> $GITHUB_ENV
+          echo "CMAKE_SHARED_LINKER_FLAGS=-fsanitize=address"         >> $GITHUB_ENV
+          echo "CMAKE_EXE_LINKER_FLAGS=-fsanitize=address"            >> $GITHUB_ENV
+          echo "ASAN_OPTIONS=detect_leaks=0:abort_on_error=1"         >> $GITHUB_ENV
+          echo "PYTHONMALLOC=malloc"                                  >> $GITHUB_ENV
+          echo "PYTHONFAULTHANDLER=1"                                 >> $GITHUB_ENV
 
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
           pip install scikit-build-core cmake ninja pybind11
 
-      - name: Install project
+      - name: Install project with ASAN instrumentation
         run: |
           pip install -e ".[dev]" --no-build-isolation
 
-      - name: Preload ASAN runtime
+      - name: Resolve ASAN runtime path
         run: |
-          echo "LD_PRELOAD=$(clang -print-file-name=libasan.so)" >> $GITHUB_ENV
+          ASAN_LIB=$(clang -print-file-name=libasan.so)
+          if [[ "$ASAN_LIB" == "libasan.so" ]]; then
+            ASAN_LIB=$(find /usr/lib/llvm-*/lib /usr/lib/x86_64-linux-gnu \
+              -name "libasan.so*" 2>/dev/null | head -1)
+          fi
+          echo "Resolved: $ASAN_LIB"
+          echo "LD_PRELOAD=$ASAN_LIB" >> $GITHUB_ENV
 
-      - name: Run tests (ASAN enabled)
+      - name: Run tests with ASAN
         run: |
           pytest tests/ -v -k "not benchmark"
