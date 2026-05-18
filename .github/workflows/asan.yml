@@ -1,0 +1,40 @@
+name: ASAN Checks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  asan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang build-essential
+
+      - name: Set ASAN environment variables
+        run: |
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+          echo "CFLAGS=-fsanitize=address -fno-omit-frame-pointer" >> $GITHUB_ENV
+          echo "CXXFLAGS=-fsanitize=address -fno-omit-frame-pointer" >> $GITHUB_ENV
+          echo "LDFLAGS=-fsanitize=address" >> $GITHUB_ENV
+          echo "ASAN_OPTIONS=detect_leaks=1:abort_on_error=1" >> $GITHUB_ENV
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests (ASAN enabled)
+        run: |
+          pytest tests/ -v
