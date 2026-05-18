@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feat/asan-workflow
+      - feat/asan-workflow   # temporary for testing (remove later)
 
 jobs:
   asan:
@@ -24,20 +24,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang build-essential
 
-      - name: Set ASAN environment variables
+      - name: Set ASAN + CMake flags
         run: |
           echo "CC=clang" >> $GITHUB_ENV
           echo "CXX=clang++" >> $GITHUB_ENV
           echo "CFLAGS=-fsanitize=address -fno-omit-frame-pointer" >> $GITHUB_ENV
           echo "CXXFLAGS=-fsanitize=address -fno-omit-frame-pointer" >> $GITHUB_ENV
           echo "LDFLAGS=-fsanitize=address" >> $GITHUB_ENV
+          echo "CMAKE_CXX_FLAGS=-fsanitize=address -fno-omit-frame-pointer" >> $GITHUB_ENV
+          echo "CMAKE_EXE_LINKER_FLAGS=-fsanitize=address" >> $GITHUB_ENV
+          echo "CMAKE_SHARED_LINKER_FLAGS=-fsanitize=address" >> $GITHUB_ENV
           echo "ASAN_OPTIONS=detect_leaks=1:abort_on_error=1" >> $GITHUB_ENV
 
       - name: Install project
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev]" --no-build-isolation
 
       - name: Run tests (ASAN enabled)
         run: |
-          pytest tests/ -v
+          pytest tests/ -v -k "not benchmark"
