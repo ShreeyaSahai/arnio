@@ -2,9 +2,9 @@ name: ASAN Checks
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feat/asan-workflow
+  pull_request:
+    paths:
+      - '.github/workflows/asan.yml'
 
 jobs:
   asan:
@@ -40,7 +40,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install scikit-build-core cmake ninja pybind11
 
-      - name: Install project with ASAN instrumentation
+      - name: Install project
         run: |
           pip install -e ".[dev]" --no-build-isolation
 
@@ -51,15 +51,13 @@ jobs:
             ASAN_LIB=$(find /usr/lib/llvm-*/lib /usr/lib/x86_64-linux-gnu \
               -name "libasan.so*" 2>/dev/null | head -1)
           fi
-          echo "Resolved ASAN lib: $ASAN_LIB"
           echo "LD_PRELOAD=$ASAN_LIB" >> $GITHUB_ENV
 
       - name: Run tests with ASAN
-        continue-on-error: true
         run: |
           pytest tests/ -v -k "not benchmark"
 
-      - name: Print ASAN report (if any)
+      - name: Print ASAN report
         if: always()
         run: |
           if ls /tmp/asan.log.* 2>/dev/null; then
@@ -68,3 +66,4 @@ jobs:
           else
             echo "No ASAN log files found."
           fi
+
