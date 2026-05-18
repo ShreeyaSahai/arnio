@@ -79,6 +79,7 @@ def test_validation_result_to_pandas_empty_has_stable_columns():
         "message",
         "row_index",
         "value",
+        "severity",
     ]
 
 
@@ -205,6 +206,41 @@ def test_validation_result_to_markdown_for_success(sample_csv):
     assert "| Column | Rule | Row | Value | Message |" not in markdown
 
 
+def test_warning_severity_does_not_fail_validation(tmp_path):
+    path = tmp_path / "warnings.csv"
+    path.write_text("age\n15\n")
+
+    schema = {
+        "age": ar.Field(
+            dtype="int64",
+            min=18,
+            severity="warning",
+        )
+    }
+
+    result = ar.validate(ar.read_csv(path), schema)
+
+    assert result.passed
+    assert result.issue_count == 1
+    assert result.issues[0].severity == "warning"
+    assert result.issues[0].rule == "min"
+
+
+def test_warning_severity_does_not_fail_dtype_mismatch(tmp_path):
+    path = tmp_path / "dtype_warning.csv"
+    path.write_text("age\nhello\n")
+
+    result = ar.validate(
+        ar.read_csv(path),
+        {"age": ar.Int64(severity="warning")},
+    )
+
+    assert result.passed
+    assert result.issue_count == 1
+    assert result.issues[0].rule == "dtype"
+    assert result.issues[0].severity == "warning"
+
+
 def test_validation_result_to_markdown_includes_issue_table(sample_csv):
     result = ar.validate(
         ar.read_csv(sample_csv),
@@ -215,10 +251,10 @@ def test_validation_result_to_markdown_includes_issue_table(sample_csv):
 
     assert "- Status: **failed**" in markdown
     assert "- Issues found: 3" in markdown
-    assert "| Column | Rule | Row | Value | Message |" in markdown
-    assert "| age | min | 1 |" in markdown
+    assert "| Column | Rule | Severity | Row | Value | Message |" in markdown
+    assert "| age | min | error | 1 |" in markdown
     assert (
-        "| missing | required_column |  |  | Missing required column: missing |"
+        "| missing | required_column | error |  |  | Missing required column: missing |"
         in markdown
     )
 
@@ -228,7 +264,7 @@ def test_validation_result_to_markdown_limits_visible_issues(sample_csv):
 
     markdown = result.to_markdown(max_issues=1)
 
-    assert "| age | min | 1 |" in markdown
+    assert "| age | min | error | 1 |" in markdown
     assert "| age | min | 2 |" not in markdown
     assert "_Showing 1 of 2 issues._" in markdown
 
@@ -489,6 +525,11 @@ def test_int64_rejects_impossible_bounds():
         assert "min must be less than or equal to max" in str(exc)
     else:
         raise AssertionError("Expected invalid Int64 bounds to raise")
+
+
+def test_invalid_severity_raises():
+    with pytest.raises(ValueError, match="severity must be"):
+        ar.Int64(severity="warn")
 
 
 def test_float64_rejects_impossible_bounds():

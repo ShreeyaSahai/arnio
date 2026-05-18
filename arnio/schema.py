@@ -22,9 +22,17 @@ ISSUE_COLUMNS = [
     "message",
     "row_index",
     "value",
+    "severity",
 ]
 
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+_VALID_SEVERITIES = {"error", "warning"}
+
+
+def _validate_severity(severity: str) -> None:
+    if severity not in _VALID_SEVERITIES:
+        raise ValueError("severity must be 'error' or 'warning'")
 
 
 @dataclass(frozen=True)
@@ -45,6 +53,10 @@ class Field:
     _datetime_min: pd.Timestamp | None = None
     _datetime_max: pd.Timestamp | None = None
     required_if: tuple[str, Any] | None = None
+    severity: str = "error"
+
+    def __post_init__(self) -> None:
+        _validate_severity(self.severity)
 
 
 @dataclass(frozen=True)
@@ -70,6 +82,7 @@ class ValidationIssue:
     message: str
     row_index: int | None = None
     value: Any = None
+    severity: str = "error"
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-friendly dictionary."""
@@ -79,6 +92,7 @@ class ValidationIssue:
             "message": self.message,
             "row_index": self.row_index,
             "value": _clean_scalar(self.value),
+            "severity": self.severity,
         }
 
 
@@ -93,8 +107,8 @@ class ValidationResult:
 
     @property
     def passed(self) -> bool:
-        """Whether validation passed with zero issues."""
-        return self.issue_count == 0
+        """Whether validation passed with zero error-level issues."""
+        return not any(issue.severity == "error" for issue in self.issues)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-friendly dictionary."""
@@ -107,16 +121,14 @@ class ValidationResult:
         }
 
     def summary(self) -> dict[str, Any]:
-        """Return a compact validation summary.
-
-        Severity counts are not included because ``ValidationIssue`` does not
-        currently carry severity information.
-        """
+        """Return a compact validation summary."""
         by_rule: dict[str, int] = {}
         by_column: dict[str, int] = {}
         by_column_and_rule: dict[str, dict[str, int]] = {}
+        severity_counts: dict[str, int] = {}
         for issue in self.issues:
             by_rule[issue.rule] = by_rule.get(issue.rule, 0) + 1
+            severity_counts[issue.severity] = severity_counts.get(issue.severity, 0) + 1
             if issue.column is not None:
                 by_column[issue.column] = by_column.get(issue.column, 0) + 1
                 column_rules = by_column_and_rule.setdefault(issue.column, {})
@@ -126,6 +138,7 @@ class ValidationResult:
             "issue_count": self.issue_count,
             "bad_row_count": len(self.bad_rows),
             "issues_by_rule": by_rule,
+            "severity_counts": severity_counts,
             "issues_by_column": by_column,
             "issues_by_column_and_rule": by_column_and_rule,
         }
@@ -163,7 +176,7 @@ class ValidationResult:
             f"- Bad rows: {len(self.bad_rows)}",
         ]
 
-        if self.passed:
+        if self.passed and self.issue_count == 0:
             return "\n".join(lines)
 
         visible_issues = self.issues if max_issues is None else self.issues[:max_issues]
@@ -174,8 +187,8 @@ class ValidationResult:
         lines.extend(
             [
                 "",
-                "| Column | Rule | Row | Value | Message |",
-                "| --- | --- | ---: | --- | --- |",
+                "| Column | Rule | Severity | Row | Value | Message |",
+                "|---|---|---|---|---|---|",
             ]
         )
         for issue in visible_issues:
@@ -183,6 +196,7 @@ class ValidationResult:
                 "| "
                 f"{_markdown_cell(issue.column)} | "
                 f"{_markdown_cell(issue.rule)} | "
+                f"{_markdown_cell(issue.severity)} | "
                 f"{_markdown_cell(issue.row_index)} | "
                 f"{_markdown_cell(_clean_scalar(issue.value))} | "
                 f"{_markdown_cell(issue.message)} |"
@@ -428,6 +442,7 @@ def validate(frame: ArFrame, schema: Schema | dict[str, Field]) -> ValidationRes
                     column=name,
                     rule="required_column",
                     message=f"Missing required column: {name}",
+                    severity=field_def.severity,
                 )
             )
             continue
@@ -523,6 +538,7 @@ def Int64(
     min: int | None = None,
     max: int | None = None,
     unique: bool = False,
+    severity: str = "error",
     required_if: tuple[str, Any] | None = None,
 ) -> Field:
     """Create an int64 schema field."""
@@ -537,6 +553,7 @@ def Int64(
         max=max,
         unique=unique,
         required_if=required_if,
+        severity=severity,
     )
 
 
@@ -546,6 +563,7 @@ def Float64(
     min: float | None = None,
     max: float | None = None,
     unique: bool = False,
+    severity: str = "error",
     required_if: tuple[str, Any] | None = None,
 ) -> Field:
     """Create a float64 schema field."""
@@ -560,6 +578,7 @@ def Float64(
         max=max,
         unique=unique,
         required_if=required_if,
+        severity=severity,
     )
 
 
@@ -569,6 +588,7 @@ def String(
     pattern: str | None = None,
     allowed: set[Any] | list[Any] | tuple[Any, ...] | None = None,
     unique: bool = False,
+    severity: str = "error",
     min_length: int | None = None,
     max_length: int | None = None,
     required_if: tuple[str, Any] | None = None,
@@ -589,22 +609,30 @@ def String(
         min_length=min_length,
         max_length=max_length,
         required_if=required_if,
+        severity=severity,
     )
 
 
 def Bool(
     *,
     nullable: bool = True,
+    severity: str = "error",
     required_if: tuple[str, Any] | None = None,
 ) -> Field:
     """Create a bool schema field."""
-    return Field(dtype="bool", nullable=nullable, required_if=required_if)
+    return Field(
+        dtype="bool",
+        nullable=nullable,
+        required_if=required_if,
+        severity=severity,
+    )
 
 
 def Email(
     *,
     nullable: bool = True,
     unique: bool = False,
+    severity: str = "error",
     validation: str = "light",
     required_if: tuple[str, Any] | None = None,
 ) -> Field:
@@ -617,6 +645,7 @@ def Email(
         semantic="email" if validation == "light" else "email:strict",
         unique=unique,
         required_if=required_if,
+        severity=severity,
     )
 
 
@@ -624,6 +653,7 @@ def URL(
     *,
     nullable: bool = True,
     unique: bool = False,
+    severity: str = "error",
     required_if: tuple[str, Any] | None = None,
 ) -> Field:
     """Create a URL schema field."""
@@ -633,6 +663,7 @@ def URL(
         semantic="url",
         unique=unique,
         required_if=required_if,
+        severity=severity,
     )
 
 
@@ -640,6 +671,7 @@ def CountryCode(
     *,
     nullable: bool = True,
     unique: bool = False,
+    severity: str = "error",
     required_if: tuple[str, Any] | None = None,
 ) -> Field:
     """Create an uppercase ISO alpha-2 country-code schema field."""
@@ -648,6 +680,7 @@ def CountryCode(
         nullable=nullable,
         semantic="country_code",
         required_if=required_if,
+        severity=severity,
     )
 
 
@@ -655,6 +688,7 @@ def Date(
     *,
     nullable: bool = True,
     unique: bool = False,
+    severity: str = "error",
     required_if: tuple[str, Any] | None = None,
 ) -> Field:
     """Create a date schema field."""
@@ -664,6 +698,7 @@ def Date(
         semantic="date",
         unique=unique,
         required_if=required_if,
+        severity=severity,
     )
 
 
@@ -672,6 +707,7 @@ def Regex(
     *,
     nullable: bool = True,
     unique: bool = False,
+    severity: str = "error",
     required_if: tuple[str, Any] | None = None,
 ) -> Field:
     """Create a regex-validated string schema field.
@@ -704,6 +740,7 @@ def Regex(
         pattern=pattern,
         unique=unique,
         required_if=required_if,
+        severity=severity,
     )
 
 
@@ -713,6 +750,7 @@ def DateTime(
     min: Any = None,
     max: Any = None,
     unique: bool = False,
+    severity: str = "error",
     format: str | None = None,
     required_if: tuple[str, Any] | None = None,
 ) -> Field:
@@ -733,6 +771,7 @@ def DateTime(
         _datetime_min=min_val,
         _datetime_max=max_val,
         required_if=required_if,
+        severity=severity,
     )
 
 
@@ -755,6 +794,7 @@ def _validate_column(
                         f"Column {name!r} has dtype {actual_dtype!r}; "
                         f"expected {field_def.dtype!r}"
                     ),
+                    severity=field_def.severity,
                 )
             )
 
@@ -765,6 +805,7 @@ def _validate_column(
                 column=name,
                 rule="nullable",
                 message=f"Column {name!r} contains null values",
+                severity=field_def.severity,
             )
         )
 
@@ -794,6 +835,7 @@ def _validate_column(
                         f"Column {name!r} is required when "
                         f"{condition_column!r} == {expected_value!r}"
                     ),
+                    severity=field_def.severity,
                 )
             )
 
@@ -805,6 +847,7 @@ def _validate_column(
                 column=name,
                 rule="unique",
                 message=f"Column {name!r} contains duplicate values",
+                severity=field_def.severity,
             )
         )
 
@@ -816,6 +859,7 @@ def _validate_column(
                 column=name,
                 rule="allowed",
                 message=f"Column {name!r} contains values outside the allowed set",
+                severity=field_def.severity,
             )
         )
 
@@ -831,6 +875,7 @@ def _validate_column(
                 column=name,
                 rule="numeric",
                 message=f"Column {name!r} contains non-numeric values",
+                severity=field_def.severity,
             )
         )
         if field_def.min is not None:
@@ -840,6 +885,7 @@ def _validate_column(
                     column=name,
                     rule="min",
                     message=f"Column {name!r} has values below {field_def.min}",
+                    severity=field_def.severity,
                 )
             )
         if field_def.max is not None:
@@ -849,6 +895,7 @@ def _validate_column(
                     column=name,
                     rule="max",
                     message=f"Column {name!r} has values above {field_def.max}",
+                    severity=field_def.severity,
                 )
             )
 
@@ -862,6 +909,7 @@ def _validate_column(
                 column=name,
                 rule="pattern",
                 message=f"Column {name!r} has values that do not match the pattern",
+                severity=field_def.severity,
             )
         )
 
@@ -888,6 +936,7 @@ def _validate_column(
                             f"Column {name!r} contains values that failed "
                             f"the {validator_name!r} validator"
                         ),
+                        severity=field_def.severity,
                     )
                 )
         else:
@@ -924,6 +973,7 @@ def _validate_column(
                         column=name,
                         rule=field_def.semantic,
                         message=f"Column {name!r} contains invalid {field_def.semantic} values",
+                        severity=field_def.severity,
                     )
                 )
     if field_def.min_length is not None:
@@ -934,6 +984,7 @@ def _validate_column(
                 column=name,
                 rule="min_length",
                 message=f"Column {name!r} has values shorter than {field_def.min_length}",
+                severity=field_def.severity,
             )
         )
 
@@ -945,6 +996,7 @@ def _validate_column(
                 column=name,
                 rule="max_length",
                 message=f"Column {name!r} has values longer than {field_def.max_length}",
+                severity=field_def.severity,
             )
         )
 
@@ -966,6 +1018,7 @@ def _validate_datetime(
             column=name,
             rule="format",
             message=f"Column {name!r} does not match the required datetime format",
+            severity=field_def.severity,
         )
     )
 
@@ -980,6 +1033,7 @@ def _validate_datetime(
                 column=name,
                 rule="min",
                 message=f"Column {name!r} has values below {field_def._datetime_min}",
+                severity=field_def.severity,
             )
         )
     if field_def._datetime_max is not None:
@@ -989,6 +1043,7 @@ def _validate_datetime(
                 column=name,
                 rule="max",
                 message=f"Column {name!r} has values above {field_def._datetime_max}",
+                severity=field_def.severity,
             )
         )
 
@@ -1016,6 +1071,7 @@ def _row_issues(
     column: str,
     rule: str,
     message: str,
+    severity: str = "error",
 ) -> list[ValidationIssue]:
     return [
         ValidationIssue(
@@ -1024,6 +1080,7 @@ def _row_issues(
             message=message,
             row_index=int(index) + 1,
             value=value,
+            severity=severity,
         )
         for index, value in invalid.items()
     ]
@@ -1130,6 +1187,7 @@ def Custom(
     *,
     nullable: bool = True,
     unique: bool = False,
+    severity: str = "error",
 ) -> Field:
     """Create a field validated by a registered custom validator.
 
@@ -1153,5 +1211,9 @@ def Custom(
             "Call ar.register_validator() first."
         )
     return Field(
-        dtype=None, nullable=nullable, unique=unique, semantic=f"custom:{name}"
+        dtype=None,
+        nullable=nullable,
+        unique=unique,
+        semantic=f"custom:{name}",
+        severity=severity,
     )
