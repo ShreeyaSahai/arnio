@@ -48,6 +48,8 @@ from .integrations import ArnioPandasAccessor
 from .io import read_csv, scan_csv, write_csv
 from .pipeline import pipeline, register_step
 from .quality import (
+    CleanExplanation,
+    CleanStepRecord,
     ColumnProfile,
     DataQualityReport,
     ProfileComparison,
@@ -127,6 +129,8 @@ __all__ = [
     "auto_clean",
     "ColumnProfile",
     "DataQualityReport",
+    "CleanStepRecord",
+    "CleanExplanation",
     "ProfileComparison",
     "QualityGateIssue",
     "QualityGateResult",
