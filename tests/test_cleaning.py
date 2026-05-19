@@ -967,6 +967,23 @@ class TestTrimColumnNames:
         with pytest.raises(ValueError, match="duplicates"):
             ar.trim_column_names(frame)
 
+    def test_trim_column_names_whitespace_only(self):
+        df = pd.DataFrame({"   ": [1], " b ": [2]})
+        frame = from_pandas(df)
+        result = ar.trim_column_names(frame)
+        assert to_pandas(result).columns.tolist() == ["", "b"]
+
+    def test_trim_column_names_skips_pandas_round_trip(self, monkeypatch):
+        import arnio.convert as convert
+
+        def _boom(*_args, **_kwargs):
+            raise AssertionError("trim_column_names should not call to_pandas")
+
+        monkeypatch.setattr(convert, "to_pandas", _boom)
+        frame = from_pandas(pd.DataFrame({" name ": [1]}))
+        result = ar.trim_column_names(frame)
+        assert result.columns == ["name"]
+
 
 class TestCastTypes:
     def test_cast_int_to_string(self, sample_csv):

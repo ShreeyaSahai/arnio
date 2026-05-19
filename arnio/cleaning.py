@@ -748,17 +748,18 @@ def trim_column_names(frame: ArFrame) -> ArFrame:
     >>> frame = ar.read_csv("data.csv")  # columns: [" name ", " age "]
     >>> clean = ar.trim_column_names(frame)  # columns: ["name", "age"]
     """
-    from .convert import from_pandas, to_pandas
-
-    df = to_pandas(frame)
-    trimmed = [col.strip() for col in df.columns]
+    trimmed = [col.strip() for col in frame.columns]
 
     if len(trimmed) != len(set(trimmed)):
         raise ValueError(f"Trimming column names would create duplicates: {trimmed}")
 
-    df = df.copy()
-    df.columns = trimmed
-    return from_pandas(df)
+    mapping = {
+        original: updated
+        for original, updated in zip(frame.columns, trimmed)
+        if original != updated
+    }
+    result = _rename_columns(frame._frame, mapping)
+    return ArFrame(result)
 
 
 def cast_types(
