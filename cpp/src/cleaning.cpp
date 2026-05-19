@@ -7,6 +7,9 @@
 #include <stdexcept>
 #include <unordered_set>
 
+#include <pybind11/pybind11.h>
+namespace py = pybind11;
+
 namespace arnio {
 
 // Helper: resolve subset columns or default to all
@@ -105,7 +108,8 @@ static CellValue coerce_value(const CellValue& value, DType target) {
                 size_t pos = 0;
                 double parsed = std::stod(s, &pos);
                 if (pos == s.size()) return parsed;
-            } catch (...) {
+            } catch (const std::exception&) {
+                throw std::invalid_argument("Invalid fill value: cannot convert string to float");
             }
         }
     }
@@ -171,7 +175,7 @@ Frame fill_nulls(const Frame& frame, const CellValue& value,
             try {
                 fill_value = coerce_value(value, src.dtype());
             } catch (const std::exception& e) {
-                throw std::invalid_argument(e.what());
+                throw py::value_error(e.what());
             }
             for (size_t r = 0; r < src.size(); ++r) {
                 if (src.is_null(r)) {
