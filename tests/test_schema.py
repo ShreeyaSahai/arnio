@@ -2074,16 +2074,17 @@ def test_schema_from_json_rejects_non_object_field_definition():
 
 
 def test_empty_string_fails_when_not_nullable():
-    df = pd.DataFrame({
-        "user_id": [1, 2, 3, 4, 5],
-        "username": ["alice", "", "   ", None, float('nan')]
-    })
-    schema = ar.Schema({
-        "user_id": ar.Int64(nullable=False),
-        "username": ar.String(nullable=False)
-    })
+    df = pd.DataFrame(
+        {
+            "user_id": [1, 2, 3, 4, 5],
+            "username": ["alice", "", "   ", None, float("nan")],
+        }
+    )
+    schema = ar.Schema(
+        {"user_id": ar.Int64(nullable=False), "username": ar.String(nullable=False)}
+    )
     result = ar.validate(ar.from_pandas(df), schema)
-    
+
     assert result.issue_count == 4
     for issue in result.issues:
         assert issue.column == "username"
@@ -2091,14 +2092,15 @@ def test_empty_string_fails_when_not_nullable():
 
 
 def test_empty_string_passes_when_nullable():
-    df = pd.DataFrame({
-        "user_id": [1, 2, 3, 4, 5],
-        "username": ["alice", "", "   ", None, float('nan')]
-    })
-    schema = ar.Schema({
-        "user_id": ar.Int64(nullable=False),
-        "username": ar.String(nullable=True)
-    })
+    df = pd.DataFrame(
+        {
+            "user_id": [1, 2, 3, 4, 5],
+            "username": ["alice", "", "   ", None, float("nan")],
+        }
+    )
+    schema = ar.Schema(
+        {"user_id": ar.Int64(nullable=False), "username": ar.String(nullable=True)}
+    )
     result = ar.validate(ar.from_pandas(df), schema)
-    
+
     assert result.issue_count == 0
