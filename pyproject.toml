@@ -58,6 +58,9 @@ dev = [
 sklearn = [
     "scikit-learn>=1.0",
 ]
+parquet = [
+    "pyarrow>=8.0",
+]
 
 [tool.setuptools.package-data]
 arnio = ["py.typed"]
