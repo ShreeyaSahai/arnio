@@ -34,39 +34,24 @@ _DTYPE_LABEL: dict[str, str] = {
     "string":  "string",
 }
 
-
 def _validate_fill_value(value: Any, frame: "ArFrame", subset: list[str] | None) -> None:
-    """Raise TypeError before entering C++ if *value* is incompatible with any
-    target column's dtype."""
+    """Reject bool fill values for numeric columns before entering C++.
+    All other type mismatches are deferred to C++ which raises ValueError."""
     target_columns: list[str] = subset if subset is not None else frame.columns
     dtype_map: dict[str, str] = dict(frame._frame.dtypes())
 
     for col_name in target_columns:
         col_dtype = dtype_map.get(col_name)
-        if col_dtype is None:
-            continue
-
-        compatible = _FILL_COMPATIBLE_TYPES.get(col_dtype)
-        if compatible is None:
+        if col_dtype not in ("int64", "float64"):
             continue
 
         # bool is a subclass of int in Python, so isinstance(True, (int,)) is True.
-        # Explicitly reject bool fill values for numeric columns.
-        if col_dtype in ("int64", "float64") and isinstance(value, bool):
+        # Explicitly reject bool fill values for numeric columns before C++ sees them.
+        if isinstance(value, bool):
             raise TypeError(
                 f"fill_nulls: fill value {value!r} has type 'bool', which is not "
                 f"compatible with column {col_name!r} (dtype '{col_dtype}'). "
                 f"Use an integer or float value instead."
-            )
-
-        if not isinstance(value, compatible):
-            friendly_dtype = _DTYPE_LABEL.get(col_dtype, col_dtype)
-            expected = " or ".join(t.__name__ for t in compatible)
-            raise TypeError(
-                f"fill_nulls: fill value {value!r} has type "
-                f"'{type(value).__name__}', which is not compatible with column "
-                f"{col_name!r} (dtype '{friendly_dtype}'). "
-                f"Expected a Python {expected} value."
             )
 
 def validate_columns_exist(
