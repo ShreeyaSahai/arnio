@@ -235,13 +235,15 @@ PYBIND11_MODULE(_arnio_cpp, m) {
 
     py::class_<CsvReader>(m, "CsvReader")
         .def(py::init<const CsvConfig&>(), py::arg("config") = CsvConfig{})
-        .def("read", [](const CsvReader& reader, const std::string& path) {
+        .def("read", [](const CsvReader& reader, const std::string& path) -> py::object {
             try {
-                return reader.read(path);
+                return py::cast(reader.read(path));
             } catch (const std::runtime_error& e) {
-                throw py::value_error(e.what());
+                PyErr_SetString(PyExc_ValueError, e.what());
+                return py::none();
             } catch (const std::invalid_argument& e) {
-                throw py::value_error(e.what());
+                PyErr_SetString(PyExc_ValueError, e.what());
+                return py::none();
             }
         })
         .def("scan_schema",
@@ -260,7 +262,7 @@ PYBIND11_MODULE(_arnio_cpp, m) {
     m.def(
         "fill_nulls",
         [](const Frame& frame, py::object value,
-           const std::optional<std::vector<std::string>>& subset) {
+           const std::optional<std::vector<std::string>>& subset) -> py::object {
             CellValue cv;
             if (py::isinstance<py::str>(value)) {
                 cv = value.cast<std::string>();
@@ -274,11 +276,13 @@ PYBIND11_MODULE(_arnio_cpp, m) {
                 cv = std::monostate{};
             }
             try {
-                return fill_nulls(frame, cv, subset);
+                return py::cast(fill_nulls(frame, cv, subset));
             } catch (const std::invalid_argument& e) {
-                throw py::value_error(e.what());
+                PyErr_SetString(PyExc_ValueError, e.what());
+                return py::none();
             } catch (const std::runtime_error& e) {
-                throw py::value_error(e.what());
+                PyErr_SetString(PyExc_ValueError, e.what());
+                return py::none();
             }
         },
         py::arg("frame"), py::arg("value"), py::arg("subset") = std::nullopt);
