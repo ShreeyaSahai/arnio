@@ -31,7 +31,7 @@ jobs:
           echo "CMAKE_CXX_FLAGS=-fsanitize=address -fno-omit-frame-pointer" >> $GITHUB_ENV
           echo "CMAKE_SHARED_LINKER_FLAGS=-fsanitize=address" >> $GITHUB_ENV
           echo "CMAKE_EXE_LINKER_FLAGS=-fsanitize=address" >> $GITHUB_ENV
-          echo "ASAN_OPTIONS=detect_leaks=0:abort_on_error=1:log_path=/tmp/asan.log" >> $GITHUB_ENV
+          echo "ASAN_OPTIONS=detect_leaks=0:abort_on_error=1:log_path=/tmp/asan.log:verify_asan_override=0" >> $GITHUB_ENV
           echo "PYTHONMALLOC=malloc" >> $GITHUB_ENV
           echo "PYTHONFAULTHANDLER=1" >> $GITHUB_ENV
 
@@ -59,13 +59,18 @@ jobs:
 
       - name: Resolve ASAN runtime path
         run: |
-          ASAN_LIB=$(clang -print-file-name=libasan.so)
-          if [[ "$ASAN_LIB" == "libasan.so" ]]; then
-            ASAN_LIB=$(find /usr/lib/llvm-*/lib /usr/lib/x86_64-linux-gnu \
-              -name "libasan.so*" 2>/dev/null | head -1)
+          ASAN_LIB=$(clang -print-file-name=libclang_rt.asan-x86_64.so 2>/dev/null || true)
+          if [[ -z "$ASAN_LIB" || "$ASAN_LIB" == "libclang_rt.asan-x86_64.so" ]]; then
+          ASAN_LIB=$(find /usr/lib/llvm-*/lib/clang/*/lib/linux \
+                      /usr/lib/clang/*/lib/linux \
+                 -name "libclang_rt.asan*x86_64*.so" 2>/dev/null | head -1)
           fi
+          if [[ -z "$ASAN_LIB" ]]; then
+          echo "ERROR: Could not locate clang ASAN runtime" && exit 1
+          fi
+          echo "Found ASAN runtime: $ASAN_LIB"
           echo "LD_PRELOAD=$ASAN_LIB" >> $GITHUB_ENV
-
+    
       - name: Run tests with ASAN
         run: |
           pytest tests/ -v -k "not benchmark"

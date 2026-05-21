@@ -236,15 +236,9 @@ PYBIND11_MODULE(_arnio_cpp, m) {
     py::class_<CsvReader>(m, "CsvReader")
         .def(py::init<const CsvConfig&>(), py::arg("config") = CsvConfig{})
         .def("read", [](const CsvReader& reader, const std::string& path) -> py::object {
-            try {
-                return py::cast(reader.read(path));
-            } catch (const std::runtime_error& e) {
-                PyErr_SetString(PyExc_ValueError, e.what());
-                return py::none();
-            } catch (const std::invalid_argument& e) {
-                PyErr_SetString(PyExc_ValueError, e.what());
-                return py::none();
-            }
+
+            return py::cast(reader.read(path));
+
         })
         .def("scan_schema",
              [](const CsvReader& reader, const std::string& path) {
@@ -275,15 +269,9 @@ PYBIND11_MODULE(_arnio_cpp, m) {
             } else {
                 cv = std::monostate{};
             }
-            try {
-                return py::cast(fill_nulls(frame, cv, subset));
-            } catch (const std::invalid_argument& e) {
-                PyErr_SetString(PyExc_ValueError, e.what());
-                return py::none();
-            } catch (const std::runtime_error& e) {
-                PyErr_SetString(PyExc_ValueError, e.what());
-                return py::none();
-            }
+            
+            return py::cast(fill_nulls(frame, cv, subset));
+
         },
         py::arg("frame"), py::arg("value"), py::arg("subset") = std::nullopt);
 
