@@ -14,6 +14,18 @@ using namespace arnio;
 PYBIND11_MODULE(_arnio_cpp, m) {
     m.doc() = "arnio C++ backend";
 
+    py::register_exception_translator([](std::exception_ptr p) {
+        try {
+            if (p) std::rethrow_exception(p);
+        } catch (const std::invalid_argument& e) {
+            PyErr_SetString(PyExc_ValueError, e.what());
+        } catch (const std::out_of_range& e) {
+            PyErr_SetString(PyExc_IndexError, e.what());
+        } catch (const std::runtime_error& e) {
+            PyErr_SetString(PyExc_RuntimeError, e.what());
+        }
+    });
+
     // --- DType enum ---
     py::enum_<DType>(m, "DType")
         .value("STRING", DType::STRING)
