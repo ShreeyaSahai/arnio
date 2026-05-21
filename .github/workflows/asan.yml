@@ -2,9 +2,11 @@ name: ASAN Checks
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/fill-null-exception
+  pull_request:
+    paths:
+      - 'cpp/src/**'
+      - 'arnio/**'
+      - 'tests/**'
 
 jobs:
   asan:
