@@ -47,18 +47,15 @@ jobs:
       
       - name: Verify bind_arnio.cpp was compiled into the extension
         run: |
-          SO=$(find . -name "_arnio_cpp*.so" | head -1)
+          SO=$(python -c "import arnio._core as m; import inspect; print(inspect.getfile(m))")
           echo "Found extension: $SO"
           if strings "$SO" | grep -q "invalid_argument"; then
             echo "GOOD: exception translator string found in .so"
           else
-            echo "BAD: exception translator NOT found in .so — old cached build is being used"
+            echo "BAD: exception translator NOT found in .so"
             strings "$SO" | grep -i "exception\|error\|abort" || true
           fi
-          # Also print the build timestamp
           ls -la "$SO"
-          # Print which .so Python actually imports
-          python -c "import arnio._core as m; import inspect; print(inspect.getfile(m))"
 
       - name: Resolve ASAN runtime path
         run: |
