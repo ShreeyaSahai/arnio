@@ -246,7 +246,12 @@ def fill_nulls(
             operation="fill_nulls",
         )
     _validate_fill_value(value, frame, subset)
-    result = _fill_nulls(frame._frame, value, subset=subset)
+    try:
+        result = _fill_nulls(frame._frame, value, subset=subset)
+    except (ValueError, TypeError):
+        raise
+    except Exception as e:
+        raise ValueError(str(e)) from e
     return ArFrame(result)
 
 
