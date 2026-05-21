@@ -235,7 +235,15 @@ PYBIND11_MODULE(_arnio_cpp, m) {
 
     py::class_<CsvReader>(m, "CsvReader")
         .def(py::init<const CsvConfig&>(), py::arg("config") = CsvConfig{})
-        .def("read", &CsvReader::read)
+        .def("read", [](const CsvReader& reader, const std::string& path) {
+            try {
+                return reader.read(path);
+            } catch (const std::runtime_error& e) {
+                throw py::value_error(e.what());
+            } catch (const std::invalid_argument& e) {
+                throw py::value_error(e.what());
+            }
+        })
         .def("scan_schema",
              [](const CsvReader& reader, const std::string& path) {
                  auto result = reader.scan_schema(path);
@@ -265,7 +273,13 @@ PYBIND11_MODULE(_arnio_cpp, m) {
             } else {
                 cv = std::monostate{};
             }
-            return fill_nulls(frame, cv, subset);
+            try {
+                return fill_nulls(frame, cv, subset);
+            } catch (const std::invalid_argument& e) {
+                throw py::value_error(e.what());
+            } catch (const std::runtime_error& e) {
+                throw py::value_error(e.what());
+            }
         },
         py::arg("frame"), py::arg("value"), py::arg("subset") = std::nullopt);
 

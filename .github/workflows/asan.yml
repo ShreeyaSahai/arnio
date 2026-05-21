@@ -43,7 +43,10 @@ jobs:
       - name: Install project
         run: |
           rm -rf _skbuild build *.egg-info
-          pip install -e ".[dev]" --no-build-isolation --no-cache-dir
+          # Pass ASAN flags explicitly into CMake so the .so is compiled with ASAN
+          pip install -e ".[dev]" --no-build-isolation --no-cache-dir \
+            --config-settings=cmake.args="-DCMAKE_CXX_FLAGS=-fsanitize=address;-fno-omit-frame-pointer" \
+            --config-settings=cmake.args="-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address"
       
       - name: Verify bind_arnio.cpp was compiled into the extension
         run: |
