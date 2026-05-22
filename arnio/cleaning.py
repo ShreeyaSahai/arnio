@@ -31,6 +31,39 @@ from .convert import from_pandas, to_pandas
 from .exceptions import TypeCastError
 from .frame import ArFrame
 
+_FILL_COMPATIBLE_TYPES: dict[str, tuple[type, ...]] = {
+    "int64":   (int,),
+    "float64": (float, int),   # int is a safe upcast to float64
+    "bool":    (bool,),
+    "string":  (str,),
+}
+
+_DTYPE_LABEL: dict[str, str] = {
+    "int64":   "int64 (integer)",
+    "float64": "float64 (floating-point)",
+    "bool":    "bool",
+    "string":  "string",
+}
+
+def _validate_fill_value(value: Any, frame: "ArFrame", subset: list[str] | None) -> None:
+    """Reject bool fill values for numeric columns before entering C++.
+    All other type mismatches are deferred to C++ which raises ValueError."""
+    target_columns: list[str] = subset if subset is not None else frame.columns
+    dtype_map: dict[str, str] = dict(frame._frame.dtypes())
+
+    for col_name in target_columns:
+        col_dtype = dtype_map.get(col_name)
+        if col_dtype not in ("int64", "float64"):
+            continue
+
+        # bool is a subclass of int in Python, so isinstance(True, (int,)) is True.
+        # Explicitly reject bool fill values for numeric columns before C++ sees them.
+        if isinstance(value, bool):
+            raise TypeError(
+                f"fill_nulls: fill value {value!r} has type 'bool', which is not "
+                f"compatible with column {col_name!r} (dtype '{col_dtype}'). "
+                f"Use an integer or float value instead."
+            )
 
 def validate_columns_exist(
     frame: ArFrame,
@@ -370,7 +403,13 @@ def fill_nulls(
                 f"Available columns: {available}"
             ),
         )
-    result = _fill_nulls(frame._frame, value, subset=subset)
+        _validate_fill_value(value, frame, subset)
+    try:
+        result = _fill_nulls(frame._frame, value, subset=subset)
+    except (ValueError, TypeError):
+        raise
+    except Exception as e:
+        raise ValueError(str(e)) from e
     return ArFrame(result)
 
 
@@ -1059,6 +1098,13 @@ def cast_types(
         _validate_column_sequence(list(mapping), argument_name="mapping keys"),
         operation="cast_types",
     )
+    _VALID_DTYPE_STRINGS = {"int64", "float64", "bool", "string"}
+    for col_name, dtype_str in mapping.items():
+        if dtype_str not in _VALID_DTYPE_STRINGS:
+            raise TypeCastError(
+                f"Unknown target dtype for column '{col_name}': '{dtype_str}'. "
+                f"Valid options are: {sorted(_VALID_DTYPE_STRINGS)}"
+            )
     try:
         result = _cast_types(
             frame._frame,

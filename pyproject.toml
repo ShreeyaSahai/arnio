@@ -72,6 +72,7 @@ arnio = ["py.typed"]
 wheel.packages = ["arnio"]
 cmake.build-type = "Release"
 wheel.expand-macos-universal-tags = false
+build-dir = ""
 
 [tool.black]
 line-length = 88

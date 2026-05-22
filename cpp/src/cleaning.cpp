@@ -737,4 +737,181 @@ Frame combine_columns(const Frame& frame, const std::vector<std::string>& subset
 
     return Frame(std::move(new_cols));
 }
+Frame clip_numeric(const Frame& frame, std::optional<double> lower, std::optional<double> upper,
+                   const std::optional<std::vector<std::string>>& subset) {
+    // Build the set of column indices to clip.
+    // When subset is given, only those columns are candidates; otherwise all.
+    std::unordered_set<size_t> target_set;
+    if (subset.has_value()) {
+        for (const auto& name : subset.value()) {
+            target_set.insert(frame.column_index(name));
+        }
+    } else {
+        for (size_t i = 0; i < frame.num_cols(); ++i) {
+            target_set.insert(i);
+        }
+    }
+
+    std::vector<Column> new_cols;
+    new_cols.reserve(frame.num_cols());
+
+    for (size_t ci = 0; ci < frame.num_cols(); ++ci) {
+        const auto& src = frame.column(ci);
+
+        // Only clip INT64 and FLOAT64; clone everything else unchanged.
+        if (!target_set.count(ci) ||
+            (src.dtype() != DType::INT64 && src.dtype() != DType::FLOAT64)) {
+            new_cols.push_back(src.clone());
+            continue;
+        }
+
+        if (src.dtype() == DType::INT64) {
+            const auto& vec = std::get<std::vector<int64_t>>(src.data());
+            Column col(src.name(), DType::INT64);
+            const int64_t lo = lower.has_value() ? static_cast<int64_t>(lower.value())
+                                                 : std::numeric_limits<int64_t>::min();
+            const int64_t hi = upper.has_value() ? static_cast<int64_t>(upper.value())
+                                                 : std::numeric_limits<int64_t>::max();
+            for (size_t r = 0; r < src.size(); ++r) {
+                if (src.is_null(r)) {
+                    col.push_null();
+                } else {
+                    int64_t v = vec[r];
+                    if (v < lo) v = lo;
+                    if (v > hi) v = hi;
+                    col.push_back(v);
+                }
+            }
+            new_cols.push_back(std::move(col));
+        } else {
+            // FLOAT64
+            const auto& vec = std::get<std::vector<double>>(src.data());
+            Column col(src.name(), DType::FLOAT64);
+            for (size_t r = 0; r < src.size(); ++r) {
+                if (src.is_null(r)) {
+                    col.push_null();
+                } else {
+                    double v = vec[r];
+                    if (lower.has_value() && v < lower.value()) v = lower.value();
+                    if (upper.has_value() && v > upper.value()) v = upper.value();
+                    col.push_back(v);
+                }
+            }
+            new_cols.push_back(std::move(col));
+        }
+    }
+
+    return Frame(std::move(new_cols));
+}
+Frame safe_divide_columns(const Frame& frame, const std::string& numerator,
+                          const std::string& denominator, const std::string& output_column,
+                          double fill_value) {
+    const auto numerator_index = frame.column_index(numerator);
+    const auto denominator_index = frame.column_index(denominator);
+
+    const auto& numerator_col = frame.column(numerator_index);
+    const auto& denominator_col = frame.column(denominator_index);
+
+    if ((numerator_col.dtype() != DType::INT64 && numerator_col.dtype() != DType::FLOAT64) ||
+        (denominator_col.dtype() != DType::INT64 && denominator_col.dtype() != DType::FLOAT64)) {
+        throw std::invalid_argument(
+            "safe_divide_columns native path requires INT64 or FLOAT64 columns");
+    }
+
+    Column result_col(output_column, DType::FLOAT64);
+
+    for (size_t r = 0; r < frame.num_rows(); ++r) {
+        if (numerator_col.is_null(r) || denominator_col.is_null(r)) {
+            result_col.push_back(fill_value);
+            continue;
+        }
+
+        double numerator_value = 0.0;
+        double denominator_value = 0.0;
+
+        if (numerator_col.dtype() == DType::INT64) {
+            numerator_value =
+                static_cast<double>(std::get<std::vector<int64_t>>(numerator_col.data())[r]);
+        } else {
+            numerator_value = std::get<std::vector<double>>(numerator_col.data())[r];
+        }
+
+        if (denominator_col.dtype() == DType::INT64) {
+            denominator_value =
+                static_cast<double>(std::get<std::vector<int64_t>>(denominator_col.data())[r]);
+        } else {
+            denominator_value = std::get<std::vector<double>>(denominator_col.data())[r];
+        }
+
+        if (denominator_value == 0.0) {
+            result_col.push_back(fill_value);
+        } else {
+            result_col.push_back(numerator_value / denominator_value);
+        }
+    }
+
+    std::vector<Column> new_cols;
+    new_cols.reserve(frame.num_cols() + 1);
+
+    bool replaced_existing_output = false;
+
+    for (size_t ci = 0; ci < frame.num_cols(); ++ci) {
+        if (frame.column(ci).name() == output_column) {
+            new_cols.push_back(result_col.clone());
+            replaced_existing_output = true;
+        } else {
+            new_cols.push_back(frame.column(ci).clone());
+        }
+    }
+
+    if (!replaced_existing_output) {
+        new_cols.push_back(std::move(result_col));
+    }
+
+    return Frame(std::move(new_cols));
+}
+
+Frame combine_columns(const Frame& frame, const std::vector<std::string>& subset,
+                      const std::string& separator, const std::string& output_column) {
+    std::vector<size_t> col_indices;
+    col_indices.reserve(subset.size());
+    for (const auto& name : subset) {
+        col_indices.push_back(frame.column_index(name));
+    }
+
+    Column combined(output_column, DType::STRING);
+    size_t num_rows = frame.num_rows();
+
+    for (size_t r = 0; r < num_rows; ++r) {
+        bool all_null = true;
+        std::string row_str;
+        for (size_t i = 0; i < col_indices.size(); ++i) {
+            size_t ci = col_indices[i];
+            if (!frame.column(ci).is_null(r)) {
+                all_null = false;
+            }
+            if (i > 0) {
+                row_str += separator;
+            }
+            if (!frame.column(ci).is_null(r)) {
+                row_str += combine_cell_to_string(frame.column(ci).at(r));
+            }
+        }
+
+        if (all_null) {
+            combined.push_null();
+        } else {
+            combined.push_back(row_str);
+        }
+    }
+
+    std::vector<Column> new_cols;
+    new_cols.reserve(frame.num_cols() + 1);
+    for (size_t ci = 0; ci < frame.num_cols(); ++ci) {
+        new_cols.push_back(frame.column(ci).clone());
+    }
+    new_cols.push_back(std::move(combined));
+
+    return Frame(std::move(new_cols));
+}
 }  // namespace arnio

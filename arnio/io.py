@@ -712,6 +712,22 @@ def read_csv_chunked(
     skip_rows = _validate_skip_rows(skip_rows)
     on_bad_lines = _validate_on_bad_lines(on_bad_lines)
 
+    if _is_utf8_encoding(encoding):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            quote_count = content.count('"')
+            # A file with an odd number of unescaped quotes has an unterminated
+            # record. Count escaped quotes ("") and subtract — each escaped pair
+            # contributes 0 net openers, each real quote contributes 1.
+            escaped = content.count('""')
+            if (quote_count - escaped * 2) % 2 != 0:
+                raise CsvReadError(
+                    f"Unterminated quoted CSV record: {path!r}"
+                )
+        except (FileNotFoundError, OSError):
+            pass
+
     config = _CsvConfig()
     config.delimiter = delimiter
     config.has_header = _validate_bool_option(has_header, "has_header")
@@ -749,7 +765,7 @@ def read_csv_chunked(
         raise
     except CsvReadError:
         raise
-    except RuntimeError as e:
+    except Exception as e:
         raise CsvReadError(str(e)) from e
     finally:
         reader.close()
@@ -1295,3 +1311,21 @@ def write_parquet(
         kwargs["row_group_size"] = row_group_size
 
     df.to_parquet(path, **kwargs)
+
+    except FileNotFoundError:
+        pass
+
+    config = _CsvConfig()
+    config.delimiter = delimiter
+    config.encoding = encoding
+    config.trim_headers = trim_headers
+    reader = _CsvReader(config)
+    try:
+        with _utf8_csv_path(path, encoding) as native_path:
+            return reader.scan_schema(native_path)
+    except ValueError:
+        raise
+    except CsvReadError:
+        raise
+    except Exception as e:
+        raise CsvReadError(str(e)) from e

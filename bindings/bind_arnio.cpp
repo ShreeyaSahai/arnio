@@ -17,6 +17,18 @@ using namespace arnio;
 PYBIND11_MODULE(_arnio_cpp, m) {
     m.doc() = "arnio C++ backend";
 
+    py::register_exception_translator([](std::exception_ptr p) {
+        try {
+            if (p) std::rethrow_exception(p);
+        } catch (const std::invalid_argument& e) {
+            PyErr_SetString(PyExc_ValueError, e.what());
+        } catch (const std::out_of_range& e) {
+            PyErr_SetString(PyExc_IndexError, e.what());
+        } catch (const std::runtime_error& e) {
+            PyErr_SetString(PyExc_RuntimeError, e.what());
+        }
+    });
+
     // --- DType enum ---
     py::enum_<DType>(m, "DType")
         .value("STRING", DType::STRING)
@@ -331,7 +343,7 @@ PYBIND11_MODULE(_arnio_cpp, m) {
     m.def(
         "fill_nulls",
         [](const Frame& frame, py::object value,
-           const std::optional<std::vector<std::string>>& subset) {
+           const std::optional<std::vector<std::string>>& subset) -> py::object {
             CellValue cv;
             if (py::isinstance<py::str>(value)) {
                 cv = value.cast<std::string>();
@@ -344,7 +356,9 @@ PYBIND11_MODULE(_arnio_cpp, m) {
             } else {
                 cv = std::monostate{};
             }
-            return fill_nulls(frame, cv, subset);
+            
+            return py::cast(fill_nulls(frame, cv, subset));
+
         },
         py::arg("frame"), py::arg("value"), py::arg("subset") = std::nullopt);
 
