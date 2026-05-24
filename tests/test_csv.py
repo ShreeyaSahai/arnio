@@ -15,6 +15,16 @@ from arnio.io import _utf8_csv_path
 MESSY_CSV = str(Path(__file__).parent / "fixtures" / "messy_sales_data.csv")
 
 
+class ChunkTrackingTextStream:
+    def __init__(self, chunks):
+        self._chunks = iter(chunks)
+        self.read_sizes = []
+
+    def read(self, size=-1):
+        self.read_sizes.append(size)
+        return next(self._chunks, "")
+
+
 class TestReadCsv:
     def test_read_csv_dtype_override_string(self, tmp_path):
         path = tmp_path / "zip_codes.csv"
@@ -759,6 +769,32 @@ class TestReadCsv:
     def test_pathlike_input(self, sample_csv):
         frame = ar.read_csv(Path(sample_csv))
         assert frame.shape == (3, 4)
+
+    def test_read_csv_file_like_input_is_copied_in_bounded_chunks(self):
+        stream = ChunkTrackingTextStream(["name,age\n", "Alice,30\n", "Bob,25\n"])
+
+        frame = ar.read_csv(stream)
+        df = ar.to_pandas(frame)
+
+        assert df["name"].tolist() == ["Alice", "Bob"]
+        assert stream.read_sizes
+        assert -1 not in stream.read_sizes
+
+    def test_read_csv_chunked_file_like_input_is_copied_in_bounded_chunks(self):
+        stream = ChunkTrackingTextStream(["name,age\nAlice,30\n", "Bob,25\n"])
+
+        chunks = list(ar.read_csv_chunked(stream, chunksize=1))
+
+        assert [ar.to_pandas(chunk)["name"].iloc[0] for chunk in chunks] == [
+            "Alice",
+            "Bob",
+        ]
+        assert stream.read_sizes
+        assert -1 not in stream.read_sizes
+
+    def test_file_like_input_rejects_bytes(self):
+        with pytest.raises(TypeError, match="file-like objects must return text"):
+            ar.read_csv(io.BytesIO(b"name,age\nAlice,30\n"))
 
     def test_read_csv_encoding_errors_strict(self, tmp_path):
         csv_file = tmp_path / "invalid_utf8.csv"
