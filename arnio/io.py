@@ -869,7 +869,7 @@ def read_csv(
         raise
     except CsvReadError:
         raise
-    except RuntimeError as e:
+    except Exception as e:
         raise CsvReadError(str(e)) from None
 
     finally:
@@ -1342,7 +1342,9 @@ def scan_csv(
                     stacklevel=2,
                 )
             return cast(dict[str, str], schema)
-    except RuntimeError as e:
+    except CsvReadError:
+        raise
+    except Exception as e:
         raise CsvReadError(str(e)) from None
     finally:
         if should_cleanup and os.path.exists(native_path):
