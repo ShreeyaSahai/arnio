@@ -57,6 +57,7 @@ Discord = "https://discord.gg/xsEw7r78M"
 [project.optional-dependencies]
 arrow = ["pyarrow>=6.0"]
 duckdb = ["duckdb>=1.0"]
+polars = ["polars>=0.20"]
 
 dev = [
     "pytest>=7.0",
@@ -120,3 +121,4 @@ skip = "*-win32 *-manylinux_i686 *-musllinux*"
 test-requires = ["pytest", "pandas>=1.5", "numpy>=1.23", "hypothesis>=6.0", "PyYAML>=6.0"]
 test-command = "python -c \"import os, pathlib, tempfile; os.chdir(tempfile.mkdtemp()); import arnio as ar; print('arnio wheel:', ar.__file__); assert hasattr(ar, 'read_csv'); csv = pathlib.Path('smoke.csv'); csv.write_text('name,age\\nAlice,30\\n'); frame = ar.read_csv(str(csv)); assert frame.shape == (1, 2)\""
 build-verbosity = 1
+

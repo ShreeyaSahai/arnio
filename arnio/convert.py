@@ -420,6 +420,75 @@ def from_pandas(df: pd.DataFrame) -> ArFrame:
     return ArFrame(cpp_frame, attrs=copylib.deepcopy(df.attrs))
 
 
+def from_polars(df: object) -> ArFrame:
+    """Convert a Polars DataFrame to ArFrame.
+
+    Delegates to :func:`arnio.integrations.polars.from_polars`.
+    Polars is an optional dependency; install it with ``pip install arnio[polars]``.
+
+    Parameters
+    ----------
+    df : polars.DataFrame
+        Input Polars DataFrame.
+
+    Returns
+    -------
+    ArFrame
+        Equivalent ArFrame with inferred types and null values preserved.
+
+    Raises
+    ------
+    ImportError
+        If polars or pyarrow is not installed.
+    TypeError
+        If *df* is not a ``pl.DataFrame`` or contains unsupported dtypes.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> import arnio as ar
+    >>> pldf = pl.DataFrame({"name": ["Alice"], "score": [9.5]})
+    >>> frame = ar.from_polars(pldf)
+    """
+    from arnio.integrations.polars import from_polars as _from_polars
+
+    return _from_polars(df)
+
+
+def to_polars(frame: ArFrame) -> object:
+    """Convert an ArFrame to a Polars DataFrame.
+
+    Delegates to :func:`arnio.integrations.polars.to_polars`.
+    Polars is an optional dependency; install it with ``pip install arnio[polars]``.
+
+    Parameters
+    ----------
+    frame : ArFrame
+        Input ArFrame to convert.
+
+    Returns
+    -------
+    polars.DataFrame
+        Equivalent Polars DataFrame.
+
+    Raises
+    ------
+    ImportError
+        If polars or pyarrow is not installed.
+    TypeError
+        If *frame* is not an ArFrame.
+
+    Examples
+    --------
+    >>> import arnio as ar
+    >>> frame = ar.read_csv("data.csv")
+    >>> pldf = ar.to_polars(frame)
+    """
+    from arnio.integrations.polars import to_polars as _to_polars
+
+    return _to_polars(frame)
+
+
 def from_dict(data: dict) -> ArFrame:
     """Converts a dictionary into a structured ArFrame.
 

@@ -38,7 +38,7 @@ from .cleaning import (
     validate_columns_exist,
     winsorize_outliers,
 )
-from .convert import from_dict, from_pandas, to_arrow, to_pandas
+from .convert import from_dict, from_pandas, from_polars, to_arrow, to_pandas, to_polars
 from .exceptions import (
     ArnioError,
     CsvReadError,
@@ -162,7 +162,9 @@ __all__ = [
     # Conversion
     "to_pandas",
     "to_arrow",
+    "to_polars",
     "from_pandas",
+    "from_polars",
     "from_records",
     "from_dict",
     # Integrations
