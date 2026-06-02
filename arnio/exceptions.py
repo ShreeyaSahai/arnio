@@ -3,6 +3,8 @@ arnio.exceptions
 Custom exceptions for the Arnio library.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -76,6 +78,6 @@ class PipelineStepError(ArnioError):
 class SchemaValidationError(ArnioError):
     """Raised when a dataframe fails schema validation."""
 
-    def __init__(self, message: str, result: "ValidationResult" = None):
+    def __init__(self, message: str, result: ValidationResult = None):
         self.result = result
         super().__init__(message)
