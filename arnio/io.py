@@ -542,6 +542,7 @@ def _materialize_csv_input(
 
         if is_gz:
             import gzip
+
             tmp = tempfile.NamedTemporaryFile(
                 mode="wb",
                 suffix=".csv",
@@ -995,7 +996,7 @@ def read_csv_chunked(
                 orig_path_lower = path.lower()
             else:
                 orig_path_lower = os.fspath(path).lower()
-                
+
             if not (
                 orig_path_lower.endswith(".csv")
                 or orig_path_lower.endswith(".txt")
