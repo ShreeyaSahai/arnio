@@ -443,7 +443,7 @@ def fill_nulls(
             f"got {type(value).__name__!r}"
         )
     if isinstance(value, bool):
-        dtype_map = dict(frame._frame.dtypes())
+        dtype_map = dict(frame.dtypes())
         target_cols = subset if subset is not None else frame.columns
         for col_name in target_cols:
             if dtype_map.get(col_name) in ("int64", "float64"):
