@@ -306,7 +306,6 @@ def to_arrow(frame: ArFrame) -> pa.Table:
         empty = pd.DataFrame(index=pd.RangeIndex(cpp_frame.num_rows()))
         table = pa.Table.from_pandas(empty)
     else:
-
         for i in range(cpp_frame.num_cols()):
             col = cpp_frame.column_by_index(i)
             name = col.name()
