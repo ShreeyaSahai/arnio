@@ -186,9 +186,8 @@ class TestFillNulls:
         for good_value in [0, 0.0, False]:
             result = ar.fill_nulls(frame_num, good_value)
             df = ar.to_pandas(result)
-            assert (
-                df["a"].isnull().sum() == 0
-            ), f"Nulls remain after filling with {good_value!r}"
+            message = f"Nulls remain after filling with {good_value!r}"
+            assert df["a"].isnull().sum() == 0, message
 
         # string column → fill with string
         frame_str = ar.from_pandas(pd.DataFrame({"b": ["x", None]}))
@@ -1820,10 +1819,8 @@ class TestNormalizeUnicode:
         result = ar.normalize_unicode(frame)
         result_df = ar.to_pandas(result)
         assert result_df["score"].iloc[0] == 42
-        assert (
-            result_df["flag"].iloc[0] is True
-            or result_df["flag"].iloc[0] == True  # noqa: E712
-        )
+        flag = result_df["flag"].iloc[0]
+        assert flag is True or flag == True  # noqa: E712
 
     def test_normalize_unicode_subset_only_targets_specified_columns(self):
         import pandas as pd
@@ -4421,7 +4418,6 @@ class TestValidateStringMapping:
         with pytest.raises(
             TypeError, match="must be a mapping of string keys to strings"
         ):
-
             _validate_string_mapping([("a", "b")], argument_name="mapping")
 
     def test_invalid_non_string_keys_raise_type_error(self):
@@ -4623,6 +4619,19 @@ class TestRenameColumnsMatching:
         frame = ar.from_pandas(pd.DataFrame({"temp_": [1]}))
         with pytest.raises(ValueError):
             ar.rename_columns_matching(frame, "^temp_$", "   ")
+
+
+class TestPublicHelpersValidateArFrame:
+    @pytest.mark.parametrize("obj", [object(), None, 123, pd.DataFrame()])
+    def test_cleaning_helpers_reject_invalid_frame(self, obj):
+        with pytest.raises(TypeError, match=".*must be an ArFrame.*"):
+            ar.drop_nulls(obj)
+        with pytest.raises(TypeError, match=".*must be an ArFrame.*"):
+            ar.strip_whitespace(obj)
+        with pytest.raises(TypeError, match=".*must be an ArFrame.*"):
+            ar.drop_columns(obj, ["x"])
+        with pytest.raises(TypeError, match=".*must be an ArFrame.*"):
+            ar.validate_columns_exist(obj, ["x"])
 
 
 # ---------------------------------------------------------------------------
