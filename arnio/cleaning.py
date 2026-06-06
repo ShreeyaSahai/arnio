@@ -503,7 +503,7 @@ def fill_nulls(
         dtype_map = dict(frame.dtypes)
         target_cols = subset if subset is not None else frame.columns
         for col_name in target_cols:
-            if dtype_map.get(col_name) == "int64":
+            if dtype_map.get(col_name) == ("int64", "float64"):
                 raise TypeError(
                     f"fill_nulls: fill value {value!r} has type 'bool', which is not "
                     f"compatible with column {col_name!r}. "

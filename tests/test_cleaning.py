@@ -183,7 +183,7 @@ class TestFillNulls:
     def test_fill_nulls_accepts_valid_scalars(self):
         # numeric column → fill with numeric
         frame_num = ar.from_pandas(pd.DataFrame({"a": [1.0, None]}))
-        for good_value in [0, 0.0, False]:
+        for good_value in [0, 0.0]:
             result = ar.fill_nulls(frame_num, good_value)
             df = ar.to_pandas(result)
             assert (
@@ -197,7 +197,9 @@ class TestFillNulls:
         assert df["b"].isnull().sum() == 0, "Nulls remain after filling with 'missing'"
 
     def test_fill_nulls_rejects_bool_for_int64_column(self):
-        frame = ar.from_pandas(pd.DataFrame({"a": [1, None, 3]}))
+        frame = ar.from_pandas(
+            pd.DataFrame({"a": pd.array([1, None, 3], dtype="Int64")})
+        )
         with pytest.raises(TypeError, match="bool"):
             ar.fill_nulls(frame, True)
 
@@ -207,7 +209,11 @@ class TestFillNulls:
             ar.fill_nulls(frame, False)
 
     def test_fill_nulls_rejects_bool_via_subset(self):
-        frame = ar.from_pandas(pd.DataFrame({"a": [1, None, 3], "b": ["x", None, "z"]}))
+        frame = ar.from_pandas(
+            pd.DataFrame(
+                {"a": pd.array([1, None, 3], dtype="Int64"), "b": ["x", None, "z"]}
+            )
+        )
         with pytest.raises(TypeError, match="bool"):
             ar.fill_nulls(frame, True, subset=["a"])
 
