@@ -1983,9 +1983,11 @@ def validate_chunked(
         Validation schema to apply to every chunk.
     max_errors : int or None, default None
         Stop processing after this many issues have been accumulated.
-        Processing of the current chunk halts as soon as the limit is
-        reached and no further chunks are consumed.  When ``None`` all
-        issues are collected.
+        Once the limit is reached the current chunk finishes and no
+        further chunks are consumed.  ``row_count`` in the returned
+        result reflects only the rows in the chunks that were actually
+        read; unread chunks are not counted.  When ``None`` all chunks
+        are processed and all issues are collected.
 
     Returns
     -------
@@ -2028,7 +2030,6 @@ def validate_chunked(
 
     all_issues: list[ValidationIssue] = []
     total_row_count = 0
-    early_stop = False
 
     for chunk_index, chunk in enumerate(chunks):
         if not isinstance(chunk, ArFrame):
@@ -2037,30 +2038,20 @@ def validate_chunked(
                 f"got {type(chunk).__name__} at position {chunk_index}"
             )
 
-        if early_stop:
-            # Still need to count remaining rows; consume without validating.
-            total_row_count += chunk.shape[0]
-            continue
-
         row_offset = total_row_count
         chunk_row_count = chunk.shape[0]
 
         # Compute the per-chunk error budget so validate() can stop early.
         chunk_max_errors = None if max_errors is None else max_errors - len(all_issues)
-        if chunk_max_errors is not None and chunk_max_errors <= 0:
-            early_stop = True
-            total_row_count += chunk_row_count
-            continue
 
         chunk_result = validate(chunk, schema, max_errors=chunk_max_errors)
 
         # Shift every row_index by the cumulative offset so callers see
         # global row positions rather than within-chunk positions.
         for issue in chunk_result.issues:
-            if issue.row_index is not None:
-                adjusted_row_index = issue.row_index + row_offset
-            else:
-                adjusted_row_index = None
+            adjusted_row_index = (
+                issue.row_index + row_offset if issue.row_index is not None else None
+            )
             all_issues.append(
                 ValidationIssue._fast_create(
                     column=issue.column,
@@ -2075,7 +2066,9 @@ def validate_chunked(
         total_row_count += chunk_row_count
 
         if max_errors is not None and len(all_issues) >= max_errors:
-            early_stop = True
+            # Stop consuming further chunks immediately. row_count reflects
+            # only the rows in chunks actually read up to this point.
+            break
 
     bad_rows = sorted(
         {issue.row_index for issue in all_issues if issue.row_index is not None}

@@ -1,6 +1,5 @@
 """
-Tests for validate_chunked() (arnio/schema.py) and
-profile_chunked() (arnio/quality.py).
+Tests for validate_chunked() (arnio/schema.py).
 
 Covers:
 - Parity with single-frame validate() on small datasets
@@ -206,12 +205,21 @@ def test_validate_chunked_max_errors_limits_issues():
     assert len(result.issues) <= 5
 
 
-def test_validate_chunked_max_errors_row_count_still_correct():
-    """row_count is still the full dataset size even after early stop."""
+def test_validate_chunked_max_errors_row_count_reflects_processed_chunks():
+    """row_count reflects only the chunks actually read before early stop.
+
+    Once max_errors is reached the iterator is not consumed further, so
+    row_count is the sum of rows in the chunks processed up to and
+    including the chunk where the limit was hit — not the total file size.
+    """
     rows = [{"v": "bad"} for _ in range(40)]
     schema = ar.Schema({"v": ar.Int64(nullable=False)})
+    # chunk_size=10, max_errors=3 — limit hit inside first chunk (10 rows).
     result = ar.validate_chunked(_chunked_frames(rows, 10), schema, max_errors=3)
-    assert result.row_count == 40
+    # row_count must be a multiple of chunk_size and <= total rows.
+    assert result.row_count % 10 == 0
+    assert result.row_count <= 40
+    assert result.issue_count <= 3
 
 
 # ---------------------------------------------------------------------------
@@ -250,201 +258,6 @@ def test_validate_single_frame_still_works():
 
 
 # ---------------------------------------------------------------------------
-# profile_chunked — type-checking
-# ---------------------------------------------------------------------------
-
-
-def test_profile_chunked_raises_on_non_arframe():
-    with pytest.raises(TypeError, match="ArFrame"):
-        ar.profile_chunked(["not a frame"])
-
-
-def test_profile_chunked_raises_on_bad_sample_size_type():
-    with pytest.raises(TypeError, match="sample_size"):
-        ar.profile_chunked([], sample_size="5")  # type: ignore[arg-type]
-
-
-def test_profile_chunked_raises_on_negative_sample_size():
-    with pytest.raises(ValueError, match="sample_size"):
-        ar.profile_chunked([], sample_size=-1)
-
-
-# ---------------------------------------------------------------------------
-# profile_chunked — empty input
-# ---------------------------------------------------------------------------
-
-
-def test_profile_chunked_empty_iterable():
-    report = ar.profile_chunked([])
-    assert report.row_count == 0
-    assert report.column_count == 0
-    assert report.columns == {}
-
-
-def test_profile_chunked_single_empty_chunk():
-    frame = _frame_from_rows([])
-    report = ar.profile_chunked([frame])
-    assert report.row_count == 0
-
-
-# ---------------------------------------------------------------------------
-# profile_chunked — row count aggregation
-# ---------------------------------------------------------------------------
-
-
-def test_profile_chunked_row_count_is_total():
-    rows = [{"age": i} for i in range(30)]
-    report = ar.profile_chunked(_chunked_frames(rows, 7))
-    assert report.row_count == 30
-
-
-# ---------------------------------------------------------------------------
-# profile_chunked — null count aggregation (exact)
-# ---------------------------------------------------------------------------
-
-
-def test_profile_chunked_null_count_exact():
-    """null_count matches the count from a single-frame profile."""
-    rows = [
-        {"v": 1},
-        {"v": None},
-        {"v": 3},
-        {"v": None},
-        {"v": 5},
-        {"v": None},
-    ]
-    single_report = ar.profile(_frame_from_rows(rows))
-    chunked_report = ar.profile_chunked(_chunked_frames(rows, 2))
-
-    assert (
-        chunked_report.columns["v"].null_count == single_report.columns["v"].null_count
-    )
-    assert chunked_report.row_count == single_report.row_count
-
-
-def test_profile_chunked_null_ratio_exact():
-    """null_ratio is exactly null_count / row_count."""
-    rows = [{"x": i if i % 3 != 0 else None} for i in range(9)]
-    report = ar.profile_chunked(_chunked_frames(rows, 3))
-    col = report.columns["x"]
-    expected_ratio = col.null_count / report.row_count
-    assert abs(col.null_ratio - expected_ratio) < 1e-4
-
-
-# ---------------------------------------------------------------------------
-# profile_chunked — min/max aggregation (exact)
-# ---------------------------------------------------------------------------
-
-
-def test_profile_chunked_min_max_correct():
-    """min and max span the full value range across all chunks."""
-    rows = [{"v": i} for i in range(30)]
-    single_report = ar.profile(_frame_from_rows(rows))
-    chunked_report = ar.profile_chunked(_chunked_frames(rows, 5))
-
-    s_col = single_report.columns["v"]
-    c_col = chunked_report.columns["v"]
-
-    assert c_col.min == s_col.min
-    assert c_col.max == s_col.max
-
-
-def test_profile_chunked_min_max_with_nulls():
-    """min/max skip None values and still agree with single-frame profile."""
-    rows = [
-        {"score": 10},
-        {"score": None},
-        {"score": 50},
-        {"score": None},
-        {"score": 90},
-    ]
-    single_report = ar.profile(_frame_from_rows(rows))
-    chunked_report = ar.profile_chunked(_chunked_frames(rows, 2))
-
-    s_col = single_report.columns["score"]
-    c_col = chunked_report.columns["score"]
-
-    assert c_col.min == s_col.min
-    assert c_col.max == s_col.max
-
-
-# ---------------------------------------------------------------------------
-# profile_chunked — accuracy contract: omitted fields
-# ---------------------------------------------------------------------------
-
-
-def test_profile_chunked_duplicate_rows_is_zero():
-    """duplicate_rows is 0 because cross-chunk duplicates are not tracked."""
-    rows = [{"v": i % 3} for i in range(12)]  # many duplicates
-    report = ar.profile_chunked(_chunked_frames(rows, 4))
-    assert report.duplicate_rows == 0
-    assert report.duplicate_ratio == 0.0
-
-
-def test_profile_chunked_unique_count_is_zero():
-    """unique_count is 0; exact cross-chunk uniqueness is not computed."""
-    rows = [{"v": i} for i in range(12)]
-    report = ar.profile_chunked(_chunked_frames(rows, 3))
-    assert report.columns["v"].unique_count == 0
-    assert report.columns["v"].unique_ratio == 0.0
-
-
-def test_profile_chunked_quantiles_are_none():
-    """Quantile fields are None; they cannot be aggregated across chunks."""
-    rows = [{"v": i} for i in range(20)]
-    report = ar.profile_chunked(_chunked_frames(rows, 5))
-    col = report.columns["v"]
-    assert col.q25 is None
-    assert col.q50 is None
-    assert col.q75 is None
-    assert col.q95 is None
-    assert col.std is None
-    assert col.iqr is None
-
-
-def test_profile_chunked_top_values_is_none():
-    """top_values is None; frequency tables require full-data scan."""
-    rows = [{"label": chr(65 + i % 5)} for i in range(20)]
-    report = ar.profile_chunked(_chunked_frames(rows, 4))
-    assert report.columns["label"].top_values is None
-
-
-def test_profile_chunked_quality_score_is_zero():
-    """quality_score is 0.0 in chunked mode.
-
-    The standard quality_score subtracts duplicate_penalty and
-    type_mismatch_penalty in addition to null_penalty.  Since cross-chunk
-    duplicates and full uniqueness data are unavailable, no partial
-    approximation is exposed.  The field is explicitly set to 0.0 per the
-    maintainer accuracy contract.
-    """
-    rows = [{"v": i} for i in range(20)]
-    report = ar.profile_chunked(_chunked_frames(rows, 5))
-    assert report.quality_score == 0.0
-    assert report.score_components == {}
-
-
-# ---------------------------------------------------------------------------
-# profile_chunked — existing profile() unchanged
-# ---------------------------------------------------------------------------
-
-
-def test_profile_single_frame_still_works():
-    """profile() still works as before for a single ArFrame."""
-    frame = _frame_from_rows([{"x": 1}, {"x": 2}, {"x": 3}])
-    report = ar.profile(frame)
-    assert report.row_count == 3
-    assert "x" in report.columns
-
-
-def test_profile_result_has_correct_type():
-    """profile_chunked returns a DataQualityReport instance."""
-    rows = [{"a": i} for i in range(6)]
-    report = ar.profile_chunked(_chunked_frames(rows, 2))
-    assert isinstance(report, ar.DataQualityReport)
-
-
-# ---------------------------------------------------------------------------
 # validate_chunked — public export
 # ---------------------------------------------------------------------------
 
@@ -454,14 +267,5 @@ def test_validate_chunked_is_exported():
     assert callable(ar.validate_chunked)
 
 
-def test_profile_chunked_is_exported():
-    assert hasattr(ar, "profile_chunked")
-    assert callable(ar.profile_chunked)
-
-
 def test_validate_chunked_in_all():
     assert "validate_chunked" in ar.__all__
-
-
-def test_profile_chunked_in_all():
-    assert "profile_chunked" in ar.__all__

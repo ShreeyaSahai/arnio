@@ -94,7 +94,6 @@ from .quality import (
     check_quality_gates,
     compare_profiles,
     profile,
-    profile_chunked,
     suggest_cleaning,
 )
 from .schema import (
@@ -201,7 +200,6 @@ __all__ = [
     "reset_steps",
     # Data quality
     "profile",
-    "profile_chunked",
     "compare_profiles",
     "check_quality_gates",
     "suggest_cleaning",
