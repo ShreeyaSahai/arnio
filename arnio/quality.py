@@ -1209,8 +1209,29 @@ class ProfileComparison:
         output.write(json_out)
         return None
 
-    def to_markdown(self, output: Any | None = None) -> str | None:
+    def to_markdown(
+        self,
+        output: Any | None = None,
+        exclude_columns: list[str] | set[str] | tuple[str, ...] | None = None,
+    ) -> str | None:
         """Return a GitHub-friendly Markdown drift report."""
+        if exclude_columns is None:
+            validated_exclude: set[str] = set()
+        elif not isinstance(exclude_columns, (list, tuple, set)):
+            raise TypeError("exclude_columns must be a list, tuple, set, or None")
+        else:
+            if not all(isinstance(column, str) for column in exclude_columns):
+                raise TypeError("exclude_columns must contain only string column names")
+            validated_exclude = set(exclude_columns)
+
+        unknown_exclude_columns = sorted(validated_exclude - set(self.drift_report))
+        if unknown_exclude_columns:
+            available_columns = ", ".join(self.drift_report) or "<none>"
+            raise KeyError(
+                "Unknown exclude_columns: "
+                f"{unknown_exclude_columns}. Available columns: {available_columns}"
+            )
+
         lines: list[str] = ["# Profile Comparison Report", ""]
 
         status_summary = ", ".join(
@@ -1225,6 +1246,8 @@ class ProfileComparison:
             lines.append("| Column | Status | Changes | Reasons |")
             lines.append("|---|---|---|---|")
             for name, entry in sorted(self.drift_report.items()):
+                if name in validated_exclude:
+                    continue
                 status = entry.get("status", "-")
                 changes = ", ".join(entry.get("changes", {}).keys()) or "-"
                 reasons = "; ".join(entry.get("reasons", [])) or "-"

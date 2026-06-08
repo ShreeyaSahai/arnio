@@ -60,3 +60,11 @@ def test_404_page_has_user_friendly_copy_and_navigation():
     assert "Page not found" in html
     assert "Go Home" in html
     assert "View Docs" in html
+
+
+def test_mobile_menu_toggle_identifies_controlled_navigation():
+    for html_path in HTML_FILES:
+        html = html_path.read_text(encoding="utf-8")
+        assert 'class="nav-hamburger"' in html
+        assert 'aria-controls="mobile-navigation"' in html
+        assert 'id="mobile-navigation" class="mobile-menu"' in html

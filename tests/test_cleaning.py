@@ -1985,6 +1985,123 @@ class TestNormalizeUnicode:
         assert frame_3_0_attrs._attrs["key"] == "value"
 
 
+class TestAttrsPreservation:
+    """Native cleaning wrappers must carry over ArFrame._attrs via deep copy."""
+
+    def _base_frame(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {"name": [" Alice ", " Bob "], "age": [20, 30], "score": [1.5, 2.5]}
+        )
+        frame = ar.from_pandas(df)
+        frame._attrs = {"source": "crm", "meta": {"version": 1}}
+        return frame
+
+    @pytest.mark.parametrize(
+        "op_name, fn",
+        [
+            ("drop_nulls", lambda f: ar.drop_nulls(f)),
+            ("fill_nulls", lambda f: ar.fill_nulls(f, 0)),
+            ("drop_duplicates", lambda f: ar.drop_duplicates(f)),
+            ("strip_whitespace", lambda f: ar.strip_whitespace(f)),
+            (
+                "normalize_case",
+                lambda f: ar.normalize_case(f, subset=["name"], case_type="lower"),
+            ),
+            (
+                "clip_numeric",
+                lambda f: ar.clip_numeric(f, subset=["age"], lower=0, upper=99),
+            ),
+            ("rename_columns", lambda f: ar.rename_columns(f, {"score": "score2"})),
+            ("trim_column_names", lambda f: ar.trim_column_names(f)),
+            ("cast_types", lambda f: ar.cast_types(f, {"age": "float64"})),
+            ("normalize_unicode", lambda f: ar.normalize_unicode(f, subset=["name"])),
+        ],
+    )
+    def test_attrs_propagated(self, op_name, fn):
+        frame = self._base_frame()
+        result = fn(frame)
+        assert result._attrs == {
+            "source": "crm",
+            "meta": {"version": 1},
+        }, f"{op_name} dropped _attrs"
+
+    @pytest.mark.parametrize(
+        "op_name, fn",
+        [
+            ("drop_nulls", lambda f: ar.drop_nulls(f)),
+            ("fill_nulls", lambda f: ar.fill_nulls(f, 0)),
+            ("drop_duplicates", lambda f: ar.drop_duplicates(f)),
+            ("strip_whitespace", lambda f: ar.strip_whitespace(f)),
+            (
+                "normalize_case",
+                lambda f: ar.normalize_case(f, subset=["name"], case_type="lower"),
+            ),
+            (
+                "clip_numeric",
+                lambda f: ar.clip_numeric(f, subset=["age"], lower=0, upper=99),
+            ),
+            ("rename_columns", lambda f: ar.rename_columns(f, {"score": "score2"})),
+            ("trim_column_names", lambda f: ar.trim_column_names(f)),
+            ("cast_types", lambda f: ar.cast_types(f, {"age": "float64"})),
+            ("normalize_unicode", lambda f: ar.normalize_unicode(f, subset=["name"])),
+        ],
+    )
+    def test_attrs_deep_copy_isolated(self, op_name, fn):
+        frame = self._base_frame()
+        result = fn(frame)
+        result._attrs["meta"]["version"] = 999
+        assert (
+            frame._attrs["meta"]["version"] == 1
+        ), f"{op_name} shared _attrs by reference instead of deep copying"
+
+    def test_drop_duplicates_zero_columns_preserves_attrs(self):
+        """drop_duplicates zero-column early return must propagate attrs."""
+        import pandas as pd
+
+        from arnio._core import _Frame
+
+        frame = ar.from_pandas(pd.DataFrame({"a": [1, 2, 3]}))
+        # Build a genuine zero-column frame with rows intact
+        frame._frame = _Frame.from_dict({}, {}, 3)
+        frame._attrs = {"source": "crm", "meta": {"version": 1}}
+        assert frame.shape == (3, 0)
+
+        result = ar.drop_duplicates(frame)
+
+        assert result._attrs == {
+            "source": "crm",
+            "meta": {"version": 1},
+        }, "drop_duplicates zero-column path dropped _attrs"
+
+    def test_drop_duplicates_zero_columns_attrs_deep_copy_isolated(self):
+        """drop_duplicates zero-column result attrs must be a deep copy."""
+        import pandas as pd
+
+        from arnio._core import _Frame
+
+        frame = ar.from_pandas(pd.DataFrame({"a": [1, 2, 3]}))
+        frame._frame = _Frame.from_dict({}, {}, 3)
+        frame._attrs = {"source": "crm", "meta": {"version": 1}}
+
+        result = ar.drop_duplicates(frame)
+        result._attrs["meta"]["version"] = 999
+
+        assert (
+            frame._attrs["meta"]["version"] == 1
+        ), "drop_duplicates zero-column path shared _attrs by reference instead of deep copying"
+
+    def test_empty_attrs_not_propagated(self):
+        """When source frame has no attrs, result attrs should also be empty."""
+        frame = ar.from_pandas(
+            __import__("pandas").DataFrame({"name": ["Alice"], "age": [20]})
+        )
+        assert frame._attrs == {}
+        result = ar.strip_whitespace(frame)
+        assert result._attrs == {}
+
+
 class TestParseBoolStrings:
     def test_parse_basic_bool_strings(self):
         import pandas as pd
@@ -4794,6 +4911,13 @@ class TestSlugifyColumnNames:
         frame = ar.from_pandas(pd.DataFrame({"a": [1]}))
         with pytest.raises(ValueError):
             ar.slugify_column_names(frame, on_duplicates="ignore")
+
+    @pytest.mark.parametrize("frame", [None, [], {"a": [1]}])
+    def test_non_frame_input_raises_typeerror(self, frame):
+        with pytest.raises(
+            TypeError, match="frame must be an ArFrame or pandas.DataFrame"
+        ):
+            ar.slugify_column_names(frame)
 
 
 class TestRenameColumnsMatching:

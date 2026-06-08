@@ -174,6 +174,13 @@ def _normalize_serializable(value: Any) -> Any:
     return value
 
 
+def _validate_schema_field_names(raw_fields: dict[Any, Any]) -> None:
+    """Require schema field names to be strings before sorting or emitting."""
+    for field_name in raw_fields:
+        if not isinstance(field_name, str):
+            raise TypeError("schema field names must be strings")
+
+
 def _emit_value(value: Any, depth: int) -> str:
     """Recursively emit *value* at the given indentation *depth*."""
     indent = _INDENT * depth
@@ -278,8 +285,11 @@ def schema_to_dict(schema: dict | Any) -> dict:
                 "Remove schema.rules before exporting."
             )
 
+        raw_fields = schema.fields
+        _validate_schema_field_names(raw_fields)
+
         normalised: dict = {}
-        for name, field in schema.fields.items():
+        for name, field in raw_fields.items():
             if isinstance(field, dict):
                 raw_field = field
             elif hasattr(field, "dtype"):
@@ -320,6 +330,7 @@ def schema_to_dict(schema: dict | Any) -> dict:
             raw_fields = schema
             metadata = {}
 
+        _validate_schema_field_names(raw_fields)
         normalised = {}
 
         for field_name in sorted(raw_fields.keys()):

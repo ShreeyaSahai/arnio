@@ -4,6 +4,7 @@ import io
 import json
 import math
 import warnings
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -3927,6 +3928,77 @@ def test_profile_comparison_to_markdown_invalid_output_raises():
     comparison = ar.compare_profiles(p, p)
     with pytest.raises(TypeError, match="writable text stream"):
         comparison.to_markdown(output=42)
+
+
+def test_profile_comparison_to_markdown_exclude_columns_filters_drift_rows():
+    left = ar.profile(
+        ar.from_pandas(pd.DataFrame({"ssn": ["123-45-6789"], "age": [30]}))
+    )
+    right = ar.profile(
+        ar.from_pandas(pd.DataFrame({"ssn": ["987-65-4321"], "age": [31]}))
+    )
+    comparison = ar.compare_profiles(left, right)
+
+    markdown = comparison.to_markdown(exclude_columns=["ssn"])
+
+    assert "| ssn |" not in markdown
+    assert "| age |" in markdown
+
+
+@pytest.mark.parametrize("exclude_columns", [{"ssn"}, ("ssn",)])
+def test_profile_comparison_to_markdown_accepts_set_and_tuple_exclude_columns(
+    exclude_columns,
+):
+    frame = ar.from_pandas(pd.DataFrame({"ssn": ["123-45-6789"], "age": [30]}))
+    profile = ar.profile(frame)
+    comparison = ar.compare_profiles(profile, profile)
+
+    markdown = comparison.to_markdown(exclude_columns=exclude_columns)
+
+    assert "| ssn |" not in markdown
+    assert "| age |" in markdown
+
+
+def test_profile_comparison_to_markdown_exclude_columns_unknown_raises_keyerror():
+    frame = ar.from_pandas(pd.DataFrame({"age": [30]}))
+    profile = ar.profile(frame)
+    comparison = ar.compare_profiles(profile, profile)
+
+    with pytest.raises(KeyError, match="Unknown exclude_columns"):
+        comparison.to_markdown(exclude_columns=["missing"])
+
+
+def test_profile_comparison_to_markdown_exclude_columns_invalid_type_raises():
+    invalid_exclude_columns: Any = "ssn"
+    frame = ar.from_pandas(pd.DataFrame({"ssn": ["123-45-6789"]}))
+    profile = ar.profile(frame)
+    comparison = ar.compare_profiles(profile, profile)
+
+    with pytest.raises(TypeError, match="exclude_columns must be a list"):
+        comparison.to_markdown(exclude_columns=invalid_exclude_columns)
+
+
+def test_profile_comparison_to_markdown_exclude_columns_invalid_entries_raise():
+    invalid_exclude_columns: Any = ["ssn", 123]
+    frame = ar.from_pandas(pd.DataFrame({"ssn": ["123-45-6789"]}))
+    profile = ar.profile(frame)
+    comparison = ar.compare_profiles(profile, profile)
+
+    with pytest.raises(TypeError, match="exclude_columns must contain only string"):
+        comparison.to_markdown(exclude_columns=invalid_exclude_columns)
+
+
+def test_profile_comparison_to_markdown_output_stream_respects_exclude_columns():
+    frame = ar.from_pandas(pd.DataFrame({"ssn": ["123-45-6789"], "age": [30]}))
+    profile = ar.profile(frame)
+    comparison = ar.compare_profiles(profile, profile)
+    buffer = io.StringIO()
+
+    result = comparison.to_markdown(output=buffer, exclude_columns=["ssn"])
+
+    assert result is None
+    assert "| ssn |" not in buffer.getvalue()
+    assert "| age |" in buffer.getvalue()
 
 
 # --- Tests for QualityGateResult.to_json() ---

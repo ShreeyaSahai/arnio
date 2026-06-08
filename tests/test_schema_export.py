@@ -79,6 +79,28 @@ class TestSchemaToDict:
         with pytest.raises(TypeError, match="Expected a dict"):
             schema_to_dict(42)
 
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            {1: "INT64"},
+            {"fields": {1: "INT64"}},
+            {"name": "STRING", 1: "INT64"},
+            {"fields": {"name": "STRING", 1: "INT64"}},
+        ],
+    )
+    def test_non_string_field_names_raise_typeerror(self, raw):
+        with pytest.raises(TypeError, match="schema field names must be strings"):
+            schema_to_dict(raw)
+
+        with pytest.raises(TypeError, match="schema field names must be strings"):
+            schema_to_yaml(raw)
+
+    def test_schema_object_non_string_field_name_raises_typeerror(self):
+        schema = _FakeSchema({1: _FakeField(type="INT64")})
+
+        with pytest.raises(TypeError, match="schema field names must be strings"):
+            schema_to_dict(schema)
+
 
 class TestSchemaToYamlOutput:
     def test_basic_output(self):
